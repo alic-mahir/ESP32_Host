@@ -1,0 +1,11 @@
+# Automatically generated Makefile
+# Automatically generated Makefile
+
+C_SRCS += 01_common/fifo.c
+C_SRCS += 01_common/fwver.c
+C_SRCS += 01_common/debug.c
+C_SRCS += 01_common/cstring.c
+C_SRCS += 01_common/memory.c
+
+
+INC_PATHS += -I01_common

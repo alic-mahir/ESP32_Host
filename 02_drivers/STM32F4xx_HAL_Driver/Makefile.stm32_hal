@@ -1,0 +1,23 @@
+# Automatically generated Makefile
+# Automatically generated Makefile
+
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_msp.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_exti.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_pcd.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_flash.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_dma.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_pcd_ex.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_rcc_ex.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_ll_usb.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_pwr.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_dma_ex.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_pwr_ex.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_gpio.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_flash_ex.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_rcc.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_cortex.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal.c
+C_SRCS += 02_drivers/STM32F4xx_HAL_Driver/stm32f4xx_hal_flash_ramfunc.c
+
+
+INC_PATHS += -I02_drivers/STM32F4xx_HAL_Driver

@@ -1,0 +1,5 @@
+# Automatically generated Makefile
+# Automatically generated Makefile
+
+
+INC_PATHS += -I04_middleware

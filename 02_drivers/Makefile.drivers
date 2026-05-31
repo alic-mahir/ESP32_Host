@@ -1,0 +1,10 @@
+# Automatically generated Makefile
+# Automatically generated Makefile
+
+C_SRCS += 02_drivers/mcu.c
+C_SRCS += 02_drivers/delay.c
+C_SRCS += 02_drivers/usart.c
+C_SRCS += 02_drivers/spi_hosted.c
+
+
+INC_PATHS += -I02_drivers

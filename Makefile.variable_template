@@ -1,0 +1,4 @@
+CC = arm-none-eabi-gcc
+OBJCOPY = arm-none-eabi-objcopy
+SIZE = arm-none-eabi-size
+OBJDUMP = arm-none-eabi-objdump

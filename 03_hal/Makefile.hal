@@ -1,0 +1,8 @@
+# Automatically generated Makefile
+# Automatically generated Makefile
+
+C_SRCS += 03_hal/usart_hal.c
+C_SRCS += 03_hal/spi_hosted_hal.c
+
+
+INC_PATHS += -I03_hal

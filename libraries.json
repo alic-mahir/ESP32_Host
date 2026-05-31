@@ -1,0 +1,29 @@
+[
+    {
+        "name": "fifo",
+        "path": "./01_common/",
+        "versions": [
+            "1.0.0"
+        ],
+        "url": "git@github.com:uBitLibrary/fifo",
+        "version": "1.0.0"
+    },
+    {
+        "name": "debug",
+        "path": "./01_common/",
+        "versions": [
+            "1.0.0"
+        ],
+        "url": "git@github.com:uBitLibrary/debug",
+        "version": "1.0.0"
+    },
+    {
+        "name": "cstring",
+        "path": "./01_common/",
+        "versions": [
+            "1.0.0"
+        ],
+        "url": "git@github.com:uBitLibrary/cstring",
+        "version": "1.0.0"
+    }
+]

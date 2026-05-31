@@ -1,0 +1,16 @@
+# Automatically generated Makefile
+# Automatically generated Makefile
+
+C_SRCS += 05_application/usbd_core.c
+C_SRCS += 05_application/usbd_conf.c
+C_SRCS += 05_application/usb_device.c
+C_SRCS += 05_application/usbd_ctlreq.c
+C_SRCS += 05_application/usb.c
+C_SRCS += 05_application/usbd_desc.c
+C_SRCS += 05_application/usbd_cdc_if.c
+C_SRCS += 05_application/usbd_ioreq.c
+C_SRCS += 05_application/usbd_cdc.c
+C_SRCS += 05_application/wifi_hosted.c
+
+
+INC_PATHS += -I05_application
