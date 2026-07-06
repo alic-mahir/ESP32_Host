@@ -19,6 +19,16 @@ static void log_esp_slave_pinout(void)
 	debug_log(DAPPEND, "  GND        -> GND\n");
 	debug_log(DAPPEND, "  VCC        -> 3V3\n");
 	debug_log(DAPPEND, "HS/DRDY handshake + hosted init framing enabled.\n");
+
+
+
+	// EPS pinout 
+	// MOSI - 7 
+	// MISO - 2 s
+	// CLK - 6
+	// CS - 8 
+	// HS - 22
+	// DR = 23 
 }
 
 int main(void)
