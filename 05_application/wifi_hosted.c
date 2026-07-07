@@ -20,6 +20,7 @@
 
 #define ESP_MAX_IF                                    8
 #define ESP_SERIAL_IF                                 3
+#define ESP_HCI_IF                                    4
 #define ESP_PRIV_IF                                   5
 #define ESP_PRIV_EVENT_INIT                           0x22
 #define WIFI_MODE_STA                                 1
@@ -37,12 +38,73 @@
 #define RPC_MSG_ID_REQ_WIFI_DISCONNECT                283
 #define RPC_MSG_ID_REQ_WIFI_GET_CONFIG                285
 #define RPC_MSG_ID_REQ_GET_DHCP_DNS_STATUS            353
+#define RPC_MSG_ID_REQ_GET_COPROCESSOR_FWVERSION      350
+#define RPC_MSG_ID_RESP_GET_COPROCESSOR_FWVERSION     606
+#define RPC_MSG_ID_REQ_FEATURE_CONTROL                387
+#define RPC_MSG_ID_RESP_FEATURE_CONTROL               643
 #define RPC_MSG_ID_EVENT_STA_SCAN_DONE                774
 #define RPC_MSG_ID_EVENT_STA_CONNECTED                775
 #define RPC_MSG_ID_EVENT_STA_DISCONNECTED             776
 #define RPC_MSG_ID_EVENT_DHCP_DNS_STATUS              777
 #define RPC_MSG_ID_RESP_GET_DHCP_DNS_STATUS           609
+#define WIFI_HOSTED_CONNECT_TIMEOUT_MS                10000
 #define WIFI_EVENT_ID_STA_SCAN_DONE                   43
+#define RPC_FEATURE_BLUETOOTH                         1
+#define RPC_FEATURE_COMMAND_BT_INIT                   1
+#define RPC_FEATURE_COMMAND_BT_ENABLE                 3
+#define RPC_FEATURE_OPTION_NONE                       0
+#define HCI_H4_CMD                                    0x01
+#define HCI_H4_ACL                                    0x02
+#define HCI_H4_EVT                                    0x04
+#define HCI_EVT_DISCONN_COMPLETE                      0x05
+#define HCI_EVT_COMMAND_COMPLETE                      0x0E
+#define HCI_EVT_COMMAND_STATUS                        0x0F
+#define HCI_EVT_LE_META                               0x3E
+#define HCI_LE_SUBEV_CONN_COMPLETE                    0x01
+#define HCI_LE_SUBEV_ENH_CONN_COMPLETE                0x0A
+#define HCI_OPCODE_RESET                              0x0C03
+#define HCI_OPCODE_READ_BD_ADDR                       0x1009
+#define HCI_OPCODE_LE_SET_ADV_PARAMS                  0x2006
+#define HCI_OPCODE_LE_SET_ADV_DATA                    0x2008
+#define HCI_OPCODE_LE_SET_SCAN_RSP_DATA               0x2009
+#define HCI_OPCODE_LE_SET_ADV_ENABLE                  0x200A
+#define BLE_ATT_CID                                   0x0004
+#define BLE_ATT_MTU_DEFAULT                           23
+#define BLE_CONN_HANDLE_NONE                          0xFFFF
+#define BLE_GATT_HANDLE_GAP_SERVICE                   0x0001
+#define BLE_GATT_HANDLE_DEVICE_NAME_CHR               0x0002
+#define BLE_GATT_HANDLE_DEVICE_NAME_VAL               0x0003
+#define BLE_GATT_HANDLE_CUSTOM_SERVICE                0x0010
+#define BLE_GATT_HANDLE_CUSTOM_CHR                    0x0011
+#define BLE_GATT_HANDLE_CUSTOM_VAL                    0x0012
+#define BLE_UUID_PRIMARY_SERVICE                      0x2800
+#define BLE_UUID_CHARACTERISTIC                       0x2803
+#define BLE_UUID_GAP_SERVICE                          0x1800
+#define BLE_UUID_DEVICE_NAME                          0x2A00
+#define BLE_UUID_CUSTOM_SERVICE                       0xFFF0
+#define BLE_UUID_CUSTOM_CHAR                          0xFFF1
+#define BLE_ATT_OP_ERROR_RSP                          0x01
+#define BLE_ATT_OP_MTU_REQ                            0x02
+#define BLE_ATT_OP_MTU_RSP                            0x03
+#define BLE_ATT_OP_FIND_INFO_REQ                      0x04
+#define BLE_ATT_OP_FIND_INFO_RSP                      0x05
+#define BLE_ATT_OP_READ_BY_TYPE_REQ                   0x08
+#define BLE_ATT_OP_READ_BY_TYPE_RSP                   0x09
+#define BLE_ATT_OP_READ_REQ                           0x0A
+#define BLE_ATT_OP_READ_RSP                           0x0B
+#define BLE_ATT_OP_READ_BLOB_REQ                      0x0C
+#define BLE_ATT_OP_READ_BY_GROUP_TYPE_REQ             0x10
+#define BLE_ATT_OP_READ_BY_GROUP_TYPE_RSP             0x11
+#define BLE_ATT_OP_WRITE_REQ                          0x12
+#define BLE_ATT_OP_WRITE_RSP                          0x13
+#define BLE_ATT_OP_WRITE_CMD                          0x52
+#define BLE_ATT_ERR_INVALID_HANDLE                    0x01
+#define BLE_ATT_ERR_READ_NOT_PERMITTED                0x02
+#define BLE_ATT_ERR_WRITE_NOT_PERMITTED               0x03
+#define BLE_ATT_ERR_ATTR_NOT_FOUND                    0x0A
+#define BLE_ATT_ERR_ATTR_NOT_LONG                     0x0B
+#define BLE_ATT_PROP_READ                             0x02
+#define BLE_ATT_PROP_WRITE                            0x08
 #define PROTO_PSER_TLV_T_EPNAME                       0x01
 #define PROTO_PSER_TLV_T_DATA                         0x02
 #define RPC_EP_NAME_RSP                               "RPCRsp"
@@ -89,12 +151,16 @@ typedef struct
 static uint16_t s_seq_num = 0;
 static wifi_rpc_slot_t s_rsp_q[WIFI_HOSTED_RPC_QUEUE_DEPTH];
 static wifi_rpc_slot_t s_evt_q[WIFI_HOSTED_RPC_QUEUE_DEPTH];
+static wifi_rpc_slot_t s_hci_q[WIFI_HOSTED_RPC_QUEUE_DEPTH];
 static uint8_t s_rsp_head = 0;
 static uint8_t s_rsp_tail = 0;
 static uint8_t s_rsp_count = 0;
 static uint8_t s_evt_head = 0;
 static uint8_t s_evt_tail = 0;
 static uint8_t s_evt_count = 0;
+static uint8_t s_hci_head = 0;
+static uint8_t s_hci_tail = 0;
+static uint8_t s_hci_count = 0;
 static uint32_t s_rpc_uid = 1;
 static uint16_t s_last_scan_ap_num = 0;
 static uint8_t s_scan_done_event = 0;
@@ -104,12 +170,18 @@ static uint8_t s_sta_connected_event = 0;
 static uint8_t s_sta_got_ip = 0;
 static uint32_t s_dhcp_poll_last_tick = 0;
 static uint32_t s_sta_connected_tick = 0;
+static uint16_t s_ble_conn_handle = BLE_CONN_HANDLE_NONE;
+static uint16_t s_ble_mtu = BLE_ATT_MTU_DEFAULT;
+static char s_ble_device_name[32] = "stm32-ble";
+static uint8_t s_ble_custom_value[20] = {0x42};
+static uint8_t s_ble_custom_value_len = 1;
 
 /* Private functions ******************************************************* */
 static int8_t wifi_hosted_parse_init_event(const uint8_t *rx);
 static int8_t wifi_hosted_poll_runtime(void);
 static int16_t wifi_hosted_build_rpc_req(uint32_t msg_id, const uint8_t *submsg, uint16_t submsg_len, uint8_t *out, uint16_t out_max);
 static int8_t wifi_hosted_poll_dhcp_dns_status_rpc(void);
+static int16_t wifi_hosted_q_pop(wifi_rpc_slot_t *q, uint8_t *head, uint8_t *count, uint8_t *buf, uint16_t buf_size, uint8_t *if_num);
 
 static uint16_t wifi_hosted_put_varint(uint32_t value, uint8_t *out)
 {
@@ -162,6 +234,25 @@ static int16_t wifi_hosted_get_varint(const uint8_t *buf, uint16_t len, uint16_t
         if (shift > 28U) {
             break;
         }
+    }
+    return -1;
+}
+
+static int16_t wifi_hosted_get_varint64(const uint8_t *buf, uint16_t len, uint16_t *pos, uint64_t *out)
+{
+    uint64_t value = 0;
+    uint8_t shift = 0;
+    uint8_t count = 0;
+
+    while ((*pos < len) && (count < 10U)) {
+        uint8_t b = buf[(*pos)++];
+        value |= ((uint64_t)(b & 0x7FU) << shift);
+        count++;
+        if ((b & 0x80U) == 0U) {
+            *out = value;
+            return 0;
+        }
+        shift = (uint8_t)(shift + 7U);
     }
     return -1;
 }
@@ -644,6 +735,113 @@ static int8_t wifi_hosted_get_config_verify_ssid(const char *ssid)
     return DRIVER_STATUS_OK;
 }
 
+static int8_t wifi_hosted_parse_coprocessor_fwversion(const uint8_t *payload, uint16_t payload_len,
+                                                      esp_hosted_coprocessor_fwver_t *ver_info)
+{
+    uint16_t p = 0;
+    uint32_t key;
+    uint32_t field;
+    uint32_t wire;
+    uint64_t v;
+    int32_t resp = 0;
+
+    if (ver_info == 0) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    ver_info->major1 = 0;
+    ver_info->minor1 = 0;
+    ver_info->patch1 = 0;
+    ver_info->revision = -1;
+    ver_info->prerelease = -1;
+    ver_info->build = -1;
+
+    while (p < payload_len) {
+        if (wifi_hosted_get_varint(payload, payload_len, &p, &key) != 0) {
+            return DRIVER_STATUS_ERROR;
+        }
+        field = key >> 3U;
+        wire = key & 0x07U;
+
+        if (wire == 0U) {
+            if (wifi_hosted_get_varint64(payload, payload_len, &p, &v) != 0) {
+                return DRIVER_STATUS_ERROR;
+            }
+            if (field == 1U) resp = (int32_t)v;
+            else if (field == 2U) ver_info->major1 = (uint32_t)v;
+            else if (field == 3U) ver_info->minor1 = (uint32_t)v;
+            else if (field == 4U) ver_info->patch1 = (uint32_t)v;
+            else if (field == 5U) ver_info->revision = (int32_t)v;
+            else if (field == 6U) ver_info->prerelease = (int32_t)v;
+            else if (field == 7U) ver_info->build = (int32_t)v;
+        } else if (wire == 2U) {
+            uint32_t l;
+            if (wifi_hosted_get_varint(payload, payload_len, &p, &l) != 0) {
+                return DRIVER_STATUS_ERROR;
+            }
+            if ((uint16_t)(p + l) > payload_len) {
+                return DRIVER_STATUS_ERROR;
+            }
+            p = (uint16_t)(p + (uint16_t)l);
+        } else {
+            return DRIVER_STATUS_ERROR;
+        }
+    }
+
+    if (resp != 0) {
+        return DRIVER_STATUS_ERROR;
+    }
+    return DRIVER_STATUS_OK;
+}
+
+static int8_t wifi_hosted_parse_feature_control_response(const uint8_t *payload, uint16_t payload_len)
+{
+    uint16_t p = 0;
+    uint32_t key;
+    uint32_t field;
+    uint32_t wire;
+    uint32_t v;
+    int32_t resp = 0;
+
+    while (p < payload_len) {
+        if (wifi_hosted_get_varint(payload, payload_len, &p, &key) != 0) {
+            return DRIVER_STATUS_ERROR;
+        }
+        field = key >> 3U;
+        wire = key & 0x07U;
+
+        if (wire == 0U) {
+            if (wifi_hosted_get_varint(payload, payload_len, &p, &v) != 0) {
+                return DRIVER_STATUS_ERROR;
+            }
+            if (field == 1U) {
+                resp = (int32_t)v;
+            }
+        } else if (wire == 2U) {
+            uint32_t l;
+            if (wifi_hosted_get_varint(payload, payload_len, &p, &l) != 0) {
+                return DRIVER_STATUS_ERROR;
+            }
+            if ((uint16_t)(p + l) > payload_len) {
+                return DRIVER_STATUS_ERROR;
+            }
+            p = (uint16_t)(p + (uint16_t)l);
+        } else {
+            return DRIVER_STATUS_ERROR;
+        }
+    }
+
+    if (resp != 0) {
+        return DRIVER_STATUS_ERROR;
+    }
+    return DRIVER_STATUS_OK;
+}
+
+static int16_t wifi_hosted_hci_recv(uint8_t *buf, uint16_t buf_size, uint8_t *if_num)
+{
+    return wifi_hosted_q_pop(s_hci_q, &s_hci_head, &s_hci_count, buf, buf_size, if_num);
+}
+
 static int8_t wifi_hosted_consume_events(void)
 {
     uint8_t evt[WIFI_HOSTED_RPC_MAX_PAYLOAD];
@@ -761,6 +959,9 @@ static void wifi_hosted_q_reset(void)
     s_evt_head = 0;
     s_evt_tail = 0;
     s_evt_count = 0;
+    s_hci_head = 0;
+    s_hci_tail = 0;
+    s_hci_count = 0;
 }
 
 static int8_t wifi_hosted_q_push(wifi_rpc_slot_t *q, uint8_t *tail, uint8_t *count, uint8_t if_num, const uint8_t *data, uint16_t len)
@@ -880,6 +1081,10 @@ static int8_t wifi_hosted_process_rx_frame(const uint8_t *rx)
 
     if (h->if_type == ESP_SERIAL_IF) {
         return wifi_hosted_dispatch_serial_frame(h->if_num, rx + offset, len);
+    }
+
+    if (h->if_type == ESP_HCI_IF) {
+        return wifi_hosted_q_push(s_hci_q, &s_hci_tail, &s_hci_count, h->if_num, rx + offset, len);
     }
 
     if (h->if_type == ESP_PRIV_IF) {
@@ -1415,6 +1620,663 @@ static int8_t wifi_hosted_connect_target_ap_rpc(void)
     return DRIVER_STATUS_OK;
 }
 
+static int8_t wifi_hosted_hci_wait_cmd_done(uint16_t opcode, uint16_t timeout_ms)
+{
+    uint32_t start = HAL_GetTick();
+    uint8_t evt[96];
+    uint8_t if_num;
+    int16_t got;
+
+    while ((HAL_GetTick() - start) < timeout_ms) {
+        got = wifi_hosted_hci_recv(evt, sizeof(evt), &if_num);
+        if (got > 0) {
+            if ((got >= 7) && (evt[0] == HCI_H4_EVT) && (evt[1] == HCI_EVT_COMMAND_COMPLETE)) {
+                uint16_t rsp_opcode = (uint16_t)evt[4] | ((uint16_t)evt[5] << 8U);
+                uint8_t status = evt[6];
+                if (rsp_opcode == opcode) {
+                    if (status == 0U) {
+                        return DRIVER_STATUS_OK;
+                    }
+                    debug_log(DERROR, "HCI cmd 0x%x complete status=0x%x\n", opcode, status);
+                    return DRIVER_STATUS_ERROR;
+                }
+            } else if ((got >= 7) && (evt[0] == HCI_H4_EVT) && (evt[1] == HCI_EVT_COMMAND_STATUS)) {
+                uint8_t status = evt[3];
+                uint16_t rsp_opcode = (uint16_t)evt[5] | ((uint16_t)evt[6] << 8U);
+                if (rsp_opcode == opcode) {
+                    if (status == 0U) {
+                        return DRIVER_STATUS_OK;
+                    }
+                    debug_log(DERROR, "HCI cmd 0x%x status=0x%x\n", opcode, status);
+                    return DRIVER_STATUS_ERROR;
+                }
+            }
+        }
+
+        (void)wifi_hosted_poll_runtime();
+        delay_ms(20);
+    }
+
+    debug_log(DERROR, "Timeout waiting HCI cmd 0x%x response\n", opcode);
+    return DRIVER_STATUS_TIMEOUT;
+}
+
+static int8_t wifi_hosted_hci_send_cmd(uint16_t opcode, const uint8_t *params, uint8_t param_len,
+                                       uint16_t timeout_ms)
+{
+    uint8_t tx[WIFI_HOSTED_SPI_FRAME_SIZE] = {0};
+    uint8_t rx[WIFI_HOSTED_SPI_FRAME_SIZE] = {0};
+    uint8_t *payload = tx + WIFI_HOSTED_HEADER_SIZE;
+    esp_payload_header_t *h = (esp_payload_header_t *)tx;
+    uint16_t i;
+    uint16_t hci_len = (uint16_t)(3U + param_len);
+
+    payload[0] = (uint8_t)(opcode & 0xFFU);
+    payload[1] = (uint8_t)((opcode >> 8U) & 0xFFU);
+    payload[2] = param_len;
+    for (i = 0; i < param_len; i++) {
+        payload[3U + i] = params[i];
+    }
+
+    wifi_hosted_build_header(tx, ESP_HCI_IF, 0, hci_len);
+    h->reserved3 = HCI_H4_CMD;
+    h->checksum = 0;
+    h->checksum = wifi_hosted_checksum(tx, (uint16_t)(WIFI_HOSTED_HEADER_SIZE + hci_len));
+
+    if (wifi_hosted_xfer_frame(tx, rx) != DRIVER_STATUS_OK) {
+        debug_log(DERROR, "HCI cmd 0x%x SPI send failed\n", opcode);
+        return DRIVER_STATUS_TIMEOUT;
+    }
+    (void)wifi_hosted_process_rx_frame(rx);
+
+    return wifi_hosted_hci_wait_cmd_done(opcode, timeout_ms);
+}
+
+static uint8_t wifi_hosted_append_adv_field(uint8_t *dst, uint8_t pos, uint8_t max,
+                                            uint8_t type, const uint8_t *data, uint8_t data_len)
+{
+    uint8_t i;
+    uint8_t field_len = (uint8_t)(data_len + 1U);
+
+    if ((uint8_t)(pos + field_len + 1U) > max) {
+        return pos;
+    }
+
+    dst[pos++] = field_len;
+    dst[pos++] = type;
+    for (i = 0; i < data_len; i++) {
+        dst[pos++] = data[i];
+    }
+    return pos;
+}
+
+static uint16_t wifi_hosted_get_le16(const uint8_t *p)
+{
+    return (uint16_t)p[0] | ((uint16_t)p[1] << 8U);
+}
+
+static void wifi_hosted_put_le16(uint8_t *p, uint16_t v)
+{
+    p[0] = (uint8_t)(v & 0xFFU);
+    p[1] = (uint8_t)((v >> 8U) & 0xFFU);
+}
+
+static uint8_t wifi_hosted_chr_decl(uint8_t *dst, uint16_t handle, uint8_t props,
+                                    uint16_t value_handle, uint16_t uuid)
+{
+    wifi_hosted_put_le16(&dst[0], handle);
+    dst[2] = props;
+    wifi_hosted_put_le16(&dst[3], value_handle);
+    wifi_hosted_put_le16(&dst[5], uuid);
+    return 7U;
+}
+
+static int8_t wifi_hosted_hci_send_acl(uint16_t conn_handle, const uint8_t *att, uint16_t att_len)
+{
+    uint8_t tx[WIFI_HOSTED_SPI_FRAME_SIZE] = {0};
+    uint8_t rx[WIFI_HOSTED_SPI_FRAME_SIZE] = {0};
+    uint8_t *payload = tx + WIFI_HOSTED_HEADER_SIZE;
+    esp_payload_header_t *h = (esp_payload_header_t *)tx;
+    uint16_t hci_handle = (uint16_t)(conn_handle | 0x2000U);
+    uint16_t l2cap_len = att_len;
+    uint16_t acl_data_len = (uint16_t)(4U + l2cap_len);
+    uint16_t hci_len = (uint16_t)(4U + acl_data_len);
+    uint16_t i;
+
+    if ((att == 0) || (att_len == 0U)) {
+        return DRIVER_STATUS_ERROR;
+    }
+    if (hci_len > (WIFI_HOSTED_SPI_FRAME_SIZE - WIFI_HOSTED_HEADER_SIZE)) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    wifi_hosted_put_le16(&payload[0], hci_handle);
+    wifi_hosted_put_le16(&payload[2], acl_data_len);
+    wifi_hosted_put_le16(&payload[4], l2cap_len);
+    wifi_hosted_put_le16(&payload[6], BLE_ATT_CID);
+    for (i = 0; i < att_len; i++) {
+        payload[8U + i] = att[i];
+    }
+
+    debug_log(DNONE,
+              "BLE ACL TX handle=0x%x handle_pb_bc=0x%x pb=%d bc=%d acl_len=%d l2cap_len=%d cid=0x%x att_op=0x%x\n",
+              conn_handle, hci_handle, (hci_handle >> 12U) & 0x03U, (hci_handle >> 14U) & 0x03U,
+              acl_data_len, l2cap_len, BLE_ATT_CID, att[0]);
+
+    wifi_hosted_build_header(tx, ESP_HCI_IF, 0, hci_len);
+    h->reserved3 = HCI_H4_ACL;
+    h->checksum = 0;
+    h->checksum = wifi_hosted_checksum(tx, (uint16_t)(WIFI_HOSTED_HEADER_SIZE + hci_len));
+
+    if (wifi_hosted_xfer_frame(tx, rx) != DRIVER_STATUS_OK) {
+        debug_log(DERROR, "HCI ACL SPI send failed\n");
+        return DRIVER_STATUS_TIMEOUT;
+    }
+
+    (void)wifi_hosted_process_rx_frame(rx);
+    return DRIVER_STATUS_OK;
+}
+
+static void wifi_hosted_att_error(uint16_t conn_handle, uint8_t req_opcode,
+                                  uint16_t attr_handle, uint8_t error_code)
+{
+    uint8_t rsp[5];
+    rsp[0] = BLE_ATT_OP_ERROR_RSP;
+    rsp[1] = req_opcode;
+    wifi_hosted_put_le16(&rsp[2], attr_handle);
+    rsp[4] = error_code;
+    debug_log(DNONE, "BLE ATT TX error handle=0x%x req_op=0x%x attr=0x%x err=0x%x\n",
+              conn_handle, req_opcode, attr_handle, error_code);
+    (void)wifi_hosted_hci_send_acl(conn_handle, rsp, sizeof(rsp));
+}
+
+static void wifi_hosted_att_send(uint16_t conn_handle, const uint8_t *att, uint16_t att_len)
+{
+    if ((att != 0) && (att_len > 0U)) {
+        debug_log(DNONE, "BLE ATT TX op=0x%x handle=0x%x len=%d\n", att[0], conn_handle, att_len);
+    }
+    (void)wifi_hosted_hci_send_acl(conn_handle, att, att_len);
+}
+
+static uint8_t wifi_hosted_att_handle_in_range(uint16_t handle, uint16_t start, uint16_t end)
+{
+    return ((handle >= start) && (handle <= end)) ? 1U : 0U;
+}
+
+static void wifi_hosted_log_ble_addr(const char *prefix, uint8_t addr_type, const uint8_t *addr)
+{
+    if (addr == 0) {
+        return;
+    }
+    debug_log(DNONE, "%s type=0x%x addr=%x:%x:%x:%x:%x:%x\n",
+              prefix, addr_type, addr[5], addr[4], addr[3], addr[2], addr[1], addr[0]);
+}
+
+static void wifi_hosted_att_handle_mtu(uint16_t conn_handle, const uint8_t *att, uint16_t len)
+{
+    uint8_t rsp[3];
+    uint16_t peer_mtu;
+
+    if (len < 3U) {
+        wifi_hosted_att_error(conn_handle, att[0], 0, BLE_ATT_ERR_INVALID_HANDLE);
+        return;
+    }
+
+    peer_mtu = wifi_hosted_get_le16(&att[1]);
+    s_ble_mtu = BLE_ATT_MTU_DEFAULT;
+    if ((peer_mtu >= BLE_ATT_MTU_DEFAULT) && (peer_mtu < s_ble_mtu)) {
+        s_ble_mtu = peer_mtu;
+    }
+
+    rsp[0] = BLE_ATT_OP_MTU_RSP;
+    wifi_hosted_put_le16(&rsp[1], s_ble_mtu);
+    wifi_hosted_att_send(conn_handle, rsp, sizeof(rsp));
+    debug_log(DNONE, "BLE ATT MTU negotiated: %d\n", s_ble_mtu);
+}
+
+static void wifi_hosted_att_handle_find_info(uint16_t conn_handle, const uint8_t *att, uint16_t len)
+{
+    uint8_t rsp[32];
+    uint16_t start;
+    uint16_t end;
+    uint16_t p = 2U;
+
+    if (len < 5U) {
+        wifi_hosted_att_error(conn_handle, att[0], 0, BLE_ATT_ERR_INVALID_HANDLE);
+        return;
+    }
+
+    start = wifi_hosted_get_le16(&att[1]);
+    end = wifi_hosted_get_le16(&att[3]);
+    debug_log(DNONE, "BLE ATT op=0x%x handle=0x%x start=0x%x end=0x%x\n",
+              att[0], conn_handle, start, end);
+    rsp[0] = BLE_ATT_OP_FIND_INFO_RSP;
+    rsp[1] = 0x01; /* 16-bit UUID format */
+
+    if ((wifi_hosted_att_handle_in_range(BLE_GATT_HANDLE_GAP_SERVICE, start, end) != 0U) &&
+        ((uint16_t)(p + 4U) <= s_ble_mtu)) {
+        wifi_hosted_put_le16(&rsp[p], BLE_GATT_HANDLE_GAP_SERVICE);
+        wifi_hosted_put_le16(&rsp[p + 2U], BLE_UUID_PRIMARY_SERVICE);
+        p = (uint16_t)(p + 4U);
+    }
+    if ((wifi_hosted_att_handle_in_range(BLE_GATT_HANDLE_DEVICE_NAME_CHR, start, end) != 0U) &&
+        ((uint16_t)(p + 4U) <= s_ble_mtu)) {
+        wifi_hosted_put_le16(&rsp[p], BLE_GATT_HANDLE_DEVICE_NAME_CHR);
+        wifi_hosted_put_le16(&rsp[p + 2U], BLE_UUID_CHARACTERISTIC);
+        p = (uint16_t)(p + 4U);
+    }
+    if ((wifi_hosted_att_handle_in_range(BLE_GATT_HANDLE_DEVICE_NAME_VAL, start, end) != 0U) &&
+        ((uint16_t)(p + 4U) <= s_ble_mtu)) {
+        wifi_hosted_put_le16(&rsp[p], BLE_GATT_HANDLE_DEVICE_NAME_VAL);
+        wifi_hosted_put_le16(&rsp[p + 2U], BLE_UUID_DEVICE_NAME);
+        p = (uint16_t)(p + 4U);
+    }
+    if ((wifi_hosted_att_handle_in_range(BLE_GATT_HANDLE_CUSTOM_SERVICE, start, end) != 0U) &&
+        ((uint16_t)(p + 4U) <= s_ble_mtu)) {
+        wifi_hosted_put_le16(&rsp[p], BLE_GATT_HANDLE_CUSTOM_SERVICE);
+        wifi_hosted_put_le16(&rsp[p + 2U], BLE_UUID_PRIMARY_SERVICE);
+        p = (uint16_t)(p + 4U);
+    }
+    if ((wifi_hosted_att_handle_in_range(BLE_GATT_HANDLE_CUSTOM_CHR, start, end) != 0U) &&
+        ((uint16_t)(p + 4U) <= s_ble_mtu)) {
+        wifi_hosted_put_le16(&rsp[p], BLE_GATT_HANDLE_CUSTOM_CHR);
+        wifi_hosted_put_le16(&rsp[p + 2U], BLE_UUID_CHARACTERISTIC);
+        p = (uint16_t)(p + 4U);
+    }
+    if ((wifi_hosted_att_handle_in_range(BLE_GATT_HANDLE_CUSTOM_VAL, start, end) != 0U) &&
+        ((uint16_t)(p + 4U) <= s_ble_mtu)) {
+        wifi_hosted_put_le16(&rsp[p], BLE_GATT_HANDLE_CUSTOM_VAL);
+        wifi_hosted_put_le16(&rsp[p + 2U], BLE_UUID_CUSTOM_CHAR);
+        p = (uint16_t)(p + 4U);
+    }
+
+    if (p == 2U) {
+        wifi_hosted_att_error(conn_handle, att[0], start, BLE_ATT_ERR_ATTR_NOT_FOUND);
+        return;
+    }
+    wifi_hosted_att_send(conn_handle, rsp, p);
+}
+
+static void wifi_hosted_att_handle_read_by_group_type(uint16_t conn_handle, const uint8_t *att, uint16_t len)
+{
+    uint8_t rsp[24];
+    uint16_t start;
+    uint16_t end;
+    uint16_t type;
+    uint16_t p = 2U;
+
+    if (len < 7U) {
+        wifi_hosted_att_error(conn_handle, att[0], 0, BLE_ATT_ERR_INVALID_HANDLE);
+        return;
+    }
+
+    start = wifi_hosted_get_le16(&att[1]);
+    end = wifi_hosted_get_le16(&att[3]);
+    type = wifi_hosted_get_le16(&att[5]);
+    debug_log(DNONE, "BLE ATT op=0x%x handle=0x%x start=0x%x end=0x%x uuid=0x%x\n",
+              att[0], conn_handle, start, end, type);
+
+    if (type != BLE_UUID_PRIMARY_SERVICE) {
+        wifi_hosted_att_error(conn_handle, att[0], start, BLE_ATT_ERR_ATTR_NOT_FOUND);
+        return;
+    }
+
+    rsp[0] = BLE_ATT_OP_READ_BY_GROUP_TYPE_RSP;
+    rsp[1] = 6U;
+
+    if (wifi_hosted_att_handle_in_range(BLE_GATT_HANDLE_GAP_SERVICE, start, end) != 0U) {
+        wifi_hosted_put_le16(&rsp[p], BLE_GATT_HANDLE_GAP_SERVICE);
+        wifi_hosted_put_le16(&rsp[p + 2U], BLE_GATT_HANDLE_DEVICE_NAME_VAL);
+        wifi_hosted_put_le16(&rsp[p + 4U], BLE_UUID_GAP_SERVICE);
+        p = (uint16_t)(p + 6U);
+    }
+    if (wifi_hosted_att_handle_in_range(BLE_GATT_HANDLE_CUSTOM_SERVICE, start, end) != 0U) {
+        wifi_hosted_put_le16(&rsp[p], BLE_GATT_HANDLE_CUSTOM_SERVICE);
+        wifi_hosted_put_le16(&rsp[p + 2U], BLE_GATT_HANDLE_CUSTOM_VAL);
+        wifi_hosted_put_le16(&rsp[p + 4U], BLE_UUID_CUSTOM_SERVICE);
+        p = (uint16_t)(p + 6U);
+    }
+
+    if (p == 2U) {
+        wifi_hosted_att_error(conn_handle, att[0], start, BLE_ATT_ERR_ATTR_NOT_FOUND);
+        return;
+    }
+    wifi_hosted_att_send(conn_handle, rsp, p);
+}
+
+static void wifi_hosted_att_handle_read_by_type(uint16_t conn_handle, const uint8_t *att, uint16_t len)
+{
+    uint8_t rsp[32];
+    uint16_t start;
+    uint16_t end;
+    uint16_t type;
+    uint16_t p = 2U;
+    uint16_t name_len;
+
+    if (len < 7U) {
+        wifi_hosted_att_error(conn_handle, att[0], 0, BLE_ATT_ERR_INVALID_HANDLE);
+        return;
+    }
+
+    start = wifi_hosted_get_le16(&att[1]);
+    end = wifi_hosted_get_le16(&att[3]);
+    type = wifi_hosted_get_le16(&att[5]);
+    debug_log(DNONE, "BLE ATT op=0x%x handle=0x%x start=0x%x end=0x%x uuid=0x%x\n",
+              att[0], conn_handle, start, end, type);
+    rsp[0] = BLE_ATT_OP_READ_BY_TYPE_RSP;
+
+    if (type == BLE_UUID_CHARACTERISTIC) {
+        rsp[1] = 7U;
+        if (wifi_hosted_att_handle_in_range(BLE_GATT_HANDLE_DEVICE_NAME_CHR, start, end) != 0U) {
+            p = (uint16_t)(p + wifi_hosted_chr_decl(&rsp[p], BLE_GATT_HANDLE_DEVICE_NAME_CHR,
+                                                    BLE_ATT_PROP_READ,
+                                                    BLE_GATT_HANDLE_DEVICE_NAME_VAL,
+                                                    BLE_UUID_DEVICE_NAME));
+        }
+        if (wifi_hosted_att_handle_in_range(BLE_GATT_HANDLE_CUSTOM_CHR, start, end) != 0U) {
+            p = (uint16_t)(p + wifi_hosted_chr_decl(&rsp[p], BLE_GATT_HANDLE_CUSTOM_CHR,
+                                                    (uint8_t)(BLE_ATT_PROP_READ | BLE_ATT_PROP_WRITE),
+                                                    BLE_GATT_HANDLE_CUSTOM_VAL,
+                                                    BLE_UUID_CUSTOM_CHAR));
+        }
+        if (p == 2U) {
+            wifi_hosted_att_error(conn_handle, att[0], start, BLE_ATT_ERR_ATTR_NOT_FOUND);
+            return;
+        }
+        wifi_hosted_att_send(conn_handle, rsp, p);
+        return;
+    }
+
+    if ((type == BLE_UUID_DEVICE_NAME) &&
+        (wifi_hosted_att_handle_in_range(BLE_GATT_HANDLE_DEVICE_NAME_VAL, start, end) != 0U)) {
+        name_len = (uint16_t)strlen(s_ble_device_name);
+        if (name_len > (uint16_t)(s_ble_mtu - 4U)) {
+            name_len = (uint16_t)(s_ble_mtu - 4U);
+        }
+        rsp[1] = (uint8_t)(2U + name_len);
+        wifi_hosted_put_le16(&rsp[2], BLE_GATT_HANDLE_DEVICE_NAME_VAL);
+        memcpy(&rsp[4], s_ble_device_name, name_len);
+        wifi_hosted_att_send(conn_handle, rsp, (uint16_t)(4U + name_len));
+        return;
+    }
+
+    if ((type == BLE_UUID_CUSTOM_CHAR) &&
+        (wifi_hosted_att_handle_in_range(BLE_GATT_HANDLE_CUSTOM_VAL, start, end) != 0U)) {
+        uint8_t value_len = s_ble_custom_value_len;
+        if (value_len > (uint8_t)(s_ble_mtu - 4U)) {
+            value_len = (uint8_t)(s_ble_mtu - 4U);
+        }
+        rsp[1] = (uint8_t)(2U + value_len);
+        wifi_hosted_put_le16(&rsp[2], BLE_GATT_HANDLE_CUSTOM_VAL);
+        memcpy(&rsp[4], s_ble_custom_value, value_len);
+        wifi_hosted_att_send(conn_handle, rsp, (uint16_t)(4U + value_len));
+        return;
+    }
+
+    wifi_hosted_att_error(conn_handle, att[0], start, BLE_ATT_ERR_ATTR_NOT_FOUND);
+}
+
+static void wifi_hosted_att_handle_read(uint16_t conn_handle, const uint8_t *att, uint16_t len)
+{
+    uint8_t rsp[24];
+    uint16_t handle;
+    uint16_t value_len;
+
+    if (len < 3U) {
+        wifi_hosted_att_error(conn_handle, att[0], 0, BLE_ATT_ERR_INVALID_HANDLE);
+        return;
+    }
+
+    handle = wifi_hosted_get_le16(&att[1]);
+    debug_log(DNONE, "BLE ATT op=0x%x handle=0x%x attr=0x%x\n",
+              att[0], conn_handle, handle);
+    rsp[0] = BLE_ATT_OP_READ_RSP;
+    if (handle == BLE_GATT_HANDLE_DEVICE_NAME_VAL) {
+        value_len = (uint16_t)strlen(s_ble_device_name);
+        if (value_len > 22U) {
+            value_len = 22U;
+        }
+        memcpy(&rsp[1], s_ble_device_name, value_len);
+        wifi_hosted_att_send(conn_handle, rsp, (uint16_t)(1U + value_len));
+        return;
+    }
+    if (handle == BLE_GATT_HANDLE_CUSTOM_VAL) {
+        memcpy(&rsp[1], s_ble_custom_value, s_ble_custom_value_len);
+        wifi_hosted_att_send(conn_handle, rsp, (uint16_t)(1U + s_ble_custom_value_len));
+        return;
+    }
+
+    wifi_hosted_att_error(conn_handle, att[0], handle, BLE_ATT_ERR_READ_NOT_PERMITTED);
+}
+
+static void wifi_hosted_att_handle_write(uint16_t conn_handle, const uint8_t *att, uint16_t len)
+{
+    uint8_t rsp[1] = {BLE_ATT_OP_WRITE_RSP};
+    uint16_t handle;
+    uint16_t value_len;
+
+    if (len < 3U) {
+        wifi_hosted_att_error(conn_handle, att[0], 0, BLE_ATT_ERR_INVALID_HANDLE);
+        return;
+    }
+
+    handle = wifi_hosted_get_le16(&att[1]);
+    debug_log(DNONE, "BLE ATT op=0x%x handle=0x%x attr=0x%x len=%d\n",
+              att[0], conn_handle, handle, len);
+
+    if (handle != BLE_GATT_HANDLE_CUSTOM_VAL) {
+        wifi_hosted_att_error(conn_handle, att[0], handle, BLE_ATT_ERR_WRITE_NOT_PERMITTED);
+        return;
+    }
+
+    value_len = (uint16_t)(len - 3U);
+    if (value_len > sizeof(s_ble_custom_value)) {
+        value_len = sizeof(s_ble_custom_value);
+    }
+    memcpy(s_ble_custom_value, &att[3], value_len);
+    s_ble_custom_value_len = (uint8_t)value_len;
+
+    if (att[0] == BLE_ATT_OP_WRITE_REQ) {
+        wifi_hosted_att_send(conn_handle, rsp, sizeof(rsp));
+    }
+}
+
+static void wifi_hosted_att_handle(uint16_t conn_handle, const uint8_t *att, uint16_t len)
+{
+    if ((att == 0) || (len == 0U)) {
+        return;
+    }
+
+    debug_log(DNONE, "BLE ATT rx op=0x%x handle=0x%x len=%d\n", att[0], conn_handle, len);
+
+    switch (att[0]) {
+        case BLE_ATT_OP_MTU_REQ:
+            wifi_hosted_att_handle_mtu(conn_handle, att, len);
+            break;
+
+        case BLE_ATT_OP_FIND_INFO_REQ:
+            wifi_hosted_att_handle_find_info(conn_handle, att, len);
+            break;
+
+        case BLE_ATT_OP_READ_BY_GROUP_TYPE_REQ:
+            wifi_hosted_att_handle_read_by_group_type(conn_handle, att, len);
+            break;
+
+        case BLE_ATT_OP_READ_BY_TYPE_REQ:
+            wifi_hosted_att_handle_read_by_type(conn_handle, att, len);
+            break;
+
+        case BLE_ATT_OP_READ_REQ:
+            wifi_hosted_att_handle_read(conn_handle, att, len);
+            break;
+
+        case BLE_ATT_OP_READ_BLOB_REQ:
+            if (len >= 3U) {
+                wifi_hosted_att_error(conn_handle, att[0], wifi_hosted_get_le16(&att[1]),
+                                      BLE_ATT_ERR_ATTR_NOT_LONG);
+            }
+            break;
+
+        case BLE_ATT_OP_WRITE_REQ:
+        case BLE_ATT_OP_WRITE_CMD:
+            wifi_hosted_att_handle_write(conn_handle, att, len);
+            break;
+
+        default:
+            wifi_hosted_att_error(conn_handle, att[0], 0, BLE_ATT_ERR_ATTR_NOT_FOUND);
+            debug_log(DWARNING, "Unhandled BLE ATT opcode 0x%x\n", att[0]);
+            break;
+    }
+}
+
+static void wifi_hosted_ble_handle_hci_event(const uint8_t *evt, uint16_t len)
+{
+    uint8_t event_code;
+    uint8_t param_len;
+    const uint8_t *params;
+    uint8_t subevent;
+    uint8_t status;
+    uint16_t handle;
+    uint8_t role = 0;
+    uint8_t peer_addr_type = 0;
+
+    if ((evt == 0) || (len < 3U) || (evt[0] != HCI_H4_EVT)) {
+        return;
+    }
+
+    event_code = evt[1];
+    param_len = evt[2];
+    debug_log(DNONE, "BLE HCI EVT RX h4=0x%x event=0x%x param_len=%d rx_len=%d\n",
+              evt[0], event_code, param_len, len);
+    if ((uint16_t)(param_len + 3U) > len) {
+        debug_log(DWARNING, "BLE HCI event truncated: event=0x%x param_len=%d rx_len=%d\n",
+                  event_code, param_len, len);
+        return;
+    }
+    params = &evt[3];
+
+    if (event_code == HCI_EVT_LE_META) {
+        if (param_len < 4U) {
+            debug_log(DWARNING, "BLE LE meta event too short: param_len=%d\n", param_len);
+            return;
+        }
+        subevent = params[0];
+        if (subevent == HCI_LE_SUBEV_CONN_COMPLETE) {
+            if (param_len < 19U) {
+                debug_log(DWARNING, "BLE LE conn complete too short: param_len=%d\n", param_len);
+                return;
+            }
+            status = params[1];
+            handle = wifi_hosted_get_le16(&params[2]);
+            role = params[4];
+            peer_addr_type = params[5];
+            debug_log(DNONE, "LE Conn Complete params: status=0x%x handle=0x%x role=%d peer_type=%d\n",
+                      status, handle, role, peer_addr_type);
+        } else if (subevent == HCI_LE_SUBEV_ENH_CONN_COMPLETE) {
+            if (param_len < 31U) {
+                debug_log(DWARNING, "BLE LE enhanced conn complete too short: param_len=%d\n", param_len);
+                return;
+            }
+            status = params[1];
+            handle = wifi_hosted_get_le16(&params[2]);
+            role = params[4];
+            peer_addr_type = params[5];
+            debug_log(DNONE, "LE Enhanced Conn Complete params: status=0x%x handle=0x%x role=%d peer_type=%d\n",
+                      status, handle, role, peer_addr_type);
+        } else {
+            debug_log(DNONE, "BLE LE meta event subevent=0x%x param_len=%d\n", subevent, param_len);
+            return;
+        }
+
+        debug_log(DNONE, "BLE LE connection event subevent=0x%x status=0x%x handle=0x%x role=0x%x\n",
+                  subevent, status, handle, role);
+        wifi_hosted_log_ble_addr("BLE peer", peer_addr_type, &params[6]);
+
+        if (status == 0U) {
+            s_ble_conn_handle = handle;
+            s_ble_mtu = BLE_ATT_MTU_DEFAULT;
+            debug_log(DNONE, "BLE connection established, handle=0x%x\n", s_ble_conn_handle);
+        } else {
+            debug_log(DWARNING, "BLE connection complete status=0x%x\n", status);
+        }
+        return;
+    }
+
+    if (event_code == HCI_EVT_DISCONN_COMPLETE) {
+        if (param_len < 4U) {
+            debug_log(DWARNING, "BLE disconnect event too short: param_len=%d\n", param_len);
+            return;
+        }
+        status = evt[3];
+        handle = wifi_hosted_get_le16(&evt[4]);
+        debug_log(DNONE, "BLE disconnect event status=0x%x handle=0x%x reason=0x%x\n",
+                  status, handle, evt[6]);
+        if ((status == 0U) && (handle == s_ble_conn_handle)) {
+            s_ble_conn_handle = BLE_CONN_HANDLE_NONE;
+            s_ble_mtu = BLE_ATT_MTU_DEFAULT;
+            debug_log(DNONE, "BLE disconnected, reason=0x%x\n", evt[6]);
+        }
+    }
+}
+
+static void wifi_hosted_ble_handle_acl(const uint8_t *pkt, uint16_t len)
+{
+    uint16_t handle_pb_bc;
+    uint16_t conn_handle;
+    uint8_t pb;
+    uint8_t bc;
+    uint16_t acl_len;
+    uint16_t l2cap_len;
+    uint16_t cid;
+    uint8_t att_opcode = 0;
+
+    if ((pkt == 0) || (len < 9U) || (pkt[0] != HCI_H4_ACL)) {
+        return;
+    }
+
+    handle_pb_bc = wifi_hosted_get_le16(&pkt[1]);
+    conn_handle = (uint16_t)(handle_pb_bc & 0x0FFFU);
+    pb = (uint8_t)((handle_pb_bc >> 12U) & 0x03U);
+    bc = (uint8_t)((handle_pb_bc >> 14U) & 0x03U);
+    acl_len = wifi_hosted_get_le16(&pkt[3]);
+    l2cap_len = wifi_hosted_get_le16(&pkt[5]);
+    cid = wifi_hosted_get_le16(&pkt[7]);
+
+    if ((uint16_t)(acl_len + 5U) > len) {
+        debug_log(DWARNING, "BLE ACL RX truncated handle=0x%x acl_len=%d rx_len=%d\n",
+                  conn_handle, acl_len, len);
+        return;
+    }
+    if ((l2cap_len == 0U) || ((uint16_t)(l2cap_len + 4U) > acl_len) ||
+        ((uint16_t)(l2cap_len + 9U) > len)) {
+        debug_log(DWARNING,
+                  "BLE L2CAP RX invalid handle=0x%x acl_len=%d l2cap_len=%d cid=0x%x rx_len=%d\n",
+                  conn_handle, acl_len, l2cap_len, cid, len);
+        return;
+    }
+
+    att_opcode = pkt[9];
+    debug_log(DNONE,
+              "BLE ACL RX handle=0x%x handle_pb_bc=0x%x pb=%d bc=%d acl_len=%d l2cap_len=%d cid=0x%x att_op=0x%x\n",
+              conn_handle, handle_pb_bc, pb, bc, acl_len, l2cap_len, cid, att_opcode);
+
+    if (cid != BLE_ATT_CID) {
+        debug_log(DNONE, "BLE L2CAP RX non-ATT ignored: handle=0x%x cid=0x%x l2cap_len=%d\n",
+                  conn_handle, cid, l2cap_len);
+        return;
+    }
+
+    if (s_ble_conn_handle == BLE_CONN_HANDLE_NONE) {
+        s_ble_conn_handle = conn_handle;
+        s_ble_mtu = BLE_ATT_MTU_DEFAULT;
+        debug_log(DWARNING, "BLE connection handle inferred from ACL traffic, handle=0x%x\n",
+                  s_ble_conn_handle);
+    } else if (s_ble_conn_handle != conn_handle) {
+        debug_log(DWARNING, "BLE ACL handle mismatch: active=0x%x rx=0x%x\n",
+                  s_ble_conn_handle, conn_handle);
+    }
+    wifi_hosted_att_handle(conn_handle, &pkt[9], l2cap_len);
+}
 
 /* Exported variables ****************************************************** */
 WIFI_HOSTED_CTX g_WIFI_HOSTED_CTX =
@@ -1443,6 +2305,234 @@ int8_t wifi_init(void)
     g_WIFI_HOSTED_CTX.slave_chip_id = 0xFF;
     wifi_hosted_q_reset();
     return DRIVER_STATUS_OK;
+}
+
+int8_t esp_hosted_connect_to_slave(void)
+{
+    uint32_t start;
+
+    debug_log(DNONE, "ESP-Hosted Try to communicate with ESP-Hosted slave\n");
+    if (wifi_init() != DRIVER_STATUS_OK) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    start = HAL_GetTick();
+    while ((HAL_GetTick() - start) < WIFI_HOSTED_CONNECT_TIMEOUT_MS) {
+        if (g_WIFI_HOSTED_CTX.state == WIFI_HOSTED_STATE_WAIT_INIT_EVENT) {
+            if (wifi_hosted_poll_for_init_event() == DRIVER_STATUS_OK) {
+                g_WIFI_HOSTED_CTX.state = WIFI_HOSTED_STATE_SEND_INIT_CONFIG;
+            }
+        } else if (g_WIFI_HOSTED_CTX.state == WIFI_HOSTED_STATE_SEND_INIT_CONFIG) {
+            if (wifi_hosted_send_init_config() == DRIVER_STATUS_OK) {
+                g_WIFI_HOSTED_CTX.state = WIFI_HOSTED_STATE_TRANSPORT_READY;
+                debug_log(DNONE, "ESP-hosted transport init complete\n");
+                return DRIVER_STATUS_OK;
+            }
+            g_WIFI_HOSTED_CTX.state = WIFI_HOSTED_STATE_ERROR;
+            return DRIVER_STATUS_ERROR;
+        } else if (g_WIFI_HOSTED_CTX.state == WIFI_HOSTED_STATE_TRANSPORT_READY) {
+            return DRIVER_STATUS_OK;
+        } else if (g_WIFI_HOSTED_CTX.state == WIFI_HOSTED_STATE_ERROR) {
+            return DRIVER_STATUS_ERROR;
+        }
+        delay_ms(20);
+    }
+
+    debug_log(DERROR, "Timed out waiting for ESP-hosted slave init\n");
+    g_WIFI_HOSTED_CTX.state = WIFI_HOSTED_STATE_ERROR;
+    return DRIVER_STATUS_TIMEOUT;
+}
+
+int8_t esp_hosted_get_coprocessor_fwversion(esp_hosted_coprocessor_fwver_t *ver_info)
+{
+    uint8_t rpc_buf[96];
+    uint8_t resp_payload[96];
+    int16_t rpc_len;
+    int16_t resp_len;
+
+    if (ver_info == 0) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    rpc_len = wifi_hosted_build_rpc_req(RPC_MSG_ID_REQ_GET_COPROCESSOR_FWVERSION,
+                                        0, 0, rpc_buf, sizeof(rpc_buf));
+    if (rpc_len <= 0) {
+        debug_log(DERROR, "RPC build failed for GetCoprocessorFwVersion\n");
+        return DRIVER_STATUS_ERROR;
+    }
+    if (wifi_hosted_rpc_send(0, rpc_buf, (uint16_t)rpc_len) != DRIVER_STATUS_OK) {
+        debug_log(DERROR, "RPC send failed for GetCoprocessorFwVersion\n");
+        return DRIVER_STATUS_TIMEOUT;
+    }
+
+    resp_len = wifi_hosted_wait_rpc_payload(RPC_MSG_ID_RESP_GET_COPROCESSOR_FWVERSION,
+                                            resp_payload, sizeof(resp_payload), 3000);
+    if (resp_len <= 0) {
+        debug_log(DERROR, "No/invalid response for GetCoprocessorFwVersion\n");
+        return DRIVER_STATUS_TIMEOUT;
+    }
+
+    if (wifi_hosted_parse_coprocessor_fwversion(resp_payload, (uint16_t)resp_len,
+                                                ver_info) != DRIVER_STATUS_OK) {
+        debug_log(DERROR, "Failed to parse GetCoprocessorFwVersion response\n");
+        return DRIVER_STATUS_ERROR;
+    }
+
+    return DRIVER_STATUS_OK;
+}
+
+static int8_t wifi_hosted_bt_feature_control(uint32_t command, const char *name)
+{
+    uint8_t rpc_buf[96];
+    uint8_t submsg[8];
+    uint8_t resp_payload[32];
+    uint16_t sub_len = 0;
+    int16_t rpc_len;
+    int16_t resp_len;
+
+    submsg[sub_len++] = 0x08;
+    sub_len = (uint16_t)(sub_len + wifi_hosted_put_varint(RPC_FEATURE_BLUETOOTH,
+                                                          &submsg[sub_len]));
+    submsg[sub_len++] = 0x10;
+    sub_len = (uint16_t)(sub_len + wifi_hosted_put_varint(command, &submsg[sub_len]));
+    submsg[sub_len++] = 0x18;
+    sub_len = (uint16_t)(sub_len + wifi_hosted_put_varint(RPC_FEATURE_OPTION_NONE,
+                                                          &submsg[sub_len]));
+
+    rpc_len = wifi_hosted_build_rpc_req(RPC_MSG_ID_REQ_FEATURE_CONTROL,
+                                        submsg, sub_len, rpc_buf, sizeof(rpc_buf));
+    if (rpc_len <= 0) {
+        debug_log(DERROR, "RPC build failed for %s\n", name);
+        return DRIVER_STATUS_ERROR;
+    }
+    if (wifi_hosted_rpc_send(0, rpc_buf, (uint16_t)rpc_len) != DRIVER_STATUS_OK) {
+        debug_log(DERROR, "RPC send failed for %s\n", name);
+        return DRIVER_STATUS_TIMEOUT;
+    }
+
+    resp_len = wifi_hosted_wait_rpc_payload(RPC_MSG_ID_RESP_FEATURE_CONTROL,
+                                            resp_payload, sizeof(resp_payload), 3000);
+    if (resp_len <= 0) {
+        debug_log(DERROR, "No/invalid response for %s\n", name);
+        return DRIVER_STATUS_TIMEOUT;
+    }
+
+    if (wifi_hosted_parse_feature_control_response(resp_payload, (uint16_t)resp_len) != DRIVER_STATUS_OK) {
+        debug_log(DERROR, "%s failed in slave response\n", name);
+        return DRIVER_STATUS_ERROR;
+    }
+
+    return DRIVER_STATUS_OK;
+}
+
+int8_t esp_hosted_bt_controller_init(void)
+{
+    return wifi_hosted_bt_feature_control(RPC_FEATURE_COMMAND_BT_INIT, "BtControllerInit");
+}
+
+int8_t esp_hosted_bt_controller_enable(void)
+{
+    return wifi_hosted_bt_feature_control(RPC_FEATURE_COMMAND_BT_ENABLE, "BtControllerEnable");
+}
+
+int8_t esp_hosted_ble_start_advertising(const char *name)
+{
+    uint8_t adv_params[15] = {
+        0xA0, 0x00,             /* adv_interval_min: 100 ms */
+        0xF0, 0x00,             /* adv_interval_max: 150 ms */
+        0x00,                   /* connectable undirected advertising */
+        0x00,                   /* own address type: public */
+        0x00,                   /* peer address type */
+        0, 0, 0, 0, 0, 0,       /* peer address */
+        0x07,                   /* channels 37, 38, 39 */
+        0x00                    /* allow scan/connect from any */
+    };
+    uint8_t adv_data[32] = {0};
+    uint8_t scan_rsp[32] = {0};
+    uint8_t adv_enable[1] = {1};
+    uint8_t adv_len = 0;
+    uint8_t scan_len = 0;
+    const char *adv_name = name;
+    uint8_t name_len = 0;
+    uint8_t flags = 0x06;
+    uint8_t i;
+
+    if ((adv_name == 0) || (adv_name[0] == '\0')) {
+        adv_name = "stm32-ble";
+    }
+    while ((adv_name[name_len] != '\0') && (name_len < 29U)) {
+        name_len++;
+    }
+    memset(s_ble_device_name, 0, sizeof(s_ble_device_name));
+    for (i = 0; (i < name_len) && (i < (sizeof(s_ble_device_name) - 1U)); i++) {
+        s_ble_device_name[i] = adv_name[i];
+    }
+    s_ble_conn_handle = BLE_CONN_HANDLE_NONE;
+    s_ble_mtu = BLE_ATT_MTU_DEFAULT;
+
+    if (wifi_hosted_hci_send_cmd(HCI_OPCODE_RESET, 0, 0, 1000) != DRIVER_STATUS_OK) {
+        return DRIVER_STATUS_ERROR;
+    }
+    (void)wifi_hosted_hci_send_cmd(HCI_OPCODE_READ_BD_ADDR, 0, 0, 1000);
+
+    if (wifi_hosted_hci_send_cmd(HCI_OPCODE_LE_SET_ADV_PARAMS,
+                                 adv_params, sizeof(adv_params), 1000) != DRIVER_STATUS_OK) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    adv_len = wifi_hosted_append_adv_field(&adv_data[1], adv_len, 31U, 0x01, &flags, 1U);
+    adv_data[0] = adv_len;
+    if (wifi_hosted_hci_send_cmd(HCI_OPCODE_LE_SET_ADV_DATA,
+                                 adv_data, sizeof(adv_data), 1000) != DRIVER_STATUS_OK) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    scan_len = wifi_hosted_append_adv_field(&scan_rsp[1], scan_len, 31U,
+                                            0x09, (const uint8_t *)adv_name, name_len);
+    scan_rsp[0] = scan_len;
+    for (i = (uint8_t)(scan_len + 1U); i < sizeof(scan_rsp); i++) {
+        scan_rsp[i] = 0;
+    }
+    if (wifi_hosted_hci_send_cmd(HCI_OPCODE_LE_SET_SCAN_RSP_DATA,
+                                 scan_rsp, sizeof(scan_rsp), 1000) != DRIVER_STATUS_OK) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    if (wifi_hosted_hci_send_cmd(HCI_OPCODE_LE_SET_ADV_ENABLE,
+                                 adv_enable, sizeof(adv_enable), 1000) != DRIVER_STATUS_OK) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    debug_log(DNONE, "BLE legacy advertising started as '%s'\n", adv_name);
+    return DRIVER_STATUS_OK;
+}
+
+void esp_hosted_ble_task(void)
+{
+    uint8_t pkt[WIFI_HOSTED_RPC_MAX_PAYLOAD];
+    uint8_t if_num;
+    int16_t got;
+
+    (void)wifi_hosted_poll_runtime();
+    while (1) {
+        got = wifi_hosted_hci_recv(pkt, sizeof(pkt), &if_num);
+        if (got <= 0) {
+            break;
+        }
+
+        debug_log(DNONE, "BLE HCI queue pop type=0x%x len=%d\n", pkt[0], got);
+        if (pkt[0] == HCI_H4_EVT) {
+            wifi_hosted_ble_handle_hci_event(pkt, (uint16_t)got);
+        } else if (pkt[0] == HCI_H4_ACL) {
+            wifi_hosted_ble_handle_acl(pkt, (uint16_t)got);
+        }
+        (void)if_num;
+    }
+}
+
+uint8_t esp_hosted_ble_is_connected(void)
+{
+    return (s_ble_conn_handle != BLE_CONN_HANDLE_NONE) ? 1U : 0U;
 }
 
 void wifi_task(void)
