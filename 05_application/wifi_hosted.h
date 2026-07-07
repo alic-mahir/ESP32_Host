@@ -35,12 +35,27 @@ typedef struct wifi_hosted_ctx_t
     uint8_t slave_chip_id;
 } WIFI_HOSTED_CTX;
 
+typedef struct esp_hosted_coprocessor_fwver_t
+{
+    uint32_t major1;
+    uint32_t minor1;
+    uint32_t patch1;
+    int32_t revision;
+    int32_t prerelease;
+    int32_t build;
+} esp_hosted_coprocessor_fwver_t;
+
 /* Exported variables ****************************************************** */
 extern WIFI_HOSTED_CTX g_WIFI_HOSTED_CTX;
 
 /* Exported functions ****************************************************** */
 int8_t wifi_init(void);
 void wifi_task(void);
+int8_t esp_hosted_connect_to_slave(void);
+int8_t esp_hosted_get_coprocessor_fwversion(esp_hosted_coprocessor_fwver_t *ver_info);
+int8_t esp_hosted_bt_controller_init(void);
+int8_t esp_hosted_bt_controller_enable(void);
+int8_t esp_hosted_ble_start_advertising(const char *name);
 int8_t wifi_hosted_rpc_send(uint8_t if_num, const uint8_t *payload, uint16_t len);
 int16_t wifi_hosted_rpc_recv_rsp(uint8_t *buf, uint16_t buf_size, uint8_t *if_num);
 int16_t wifi_hosted_rpc_recv_evt(uint8_t *buf, uint16_t buf_size, uint8_t *if_num);

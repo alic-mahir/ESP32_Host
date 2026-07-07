@@ -20,6 +20,7 @@
 
 #define ESP_MAX_IF                                    8
 #define ESP_SERIAL_IF                                 3
+#define ESP_HCI_IF                                    4
 #define ESP_PRIV_IF                                   5
 #define ESP_PRIV_EVENT_INIT                           0x22
 #define WIFI_MODE_STA                                 1
@@ -37,12 +38,31 @@
 #define RPC_MSG_ID_REQ_WIFI_DISCONNECT                283
 #define RPC_MSG_ID_REQ_WIFI_GET_CONFIG                285
 #define RPC_MSG_ID_REQ_GET_DHCP_DNS_STATUS            353
+#define RPC_MSG_ID_REQ_GET_COPROCESSOR_FWVERSION      350
+#define RPC_MSG_ID_RESP_GET_COPROCESSOR_FWVERSION     606
+#define RPC_MSG_ID_REQ_FEATURE_CONTROL                387
+#define RPC_MSG_ID_RESP_FEATURE_CONTROL               643
 #define RPC_MSG_ID_EVENT_STA_SCAN_DONE                774
 #define RPC_MSG_ID_EVENT_STA_CONNECTED                775
 #define RPC_MSG_ID_EVENT_STA_DISCONNECTED             776
 #define RPC_MSG_ID_EVENT_DHCP_DNS_STATUS              777
 #define RPC_MSG_ID_RESP_GET_DHCP_DNS_STATUS           609
+#define WIFI_HOSTED_CONNECT_TIMEOUT_MS                10000
 #define WIFI_EVENT_ID_STA_SCAN_DONE                   43
+#define RPC_FEATURE_BLUETOOTH                         1
+#define RPC_FEATURE_COMMAND_BT_INIT                   1
+#define RPC_FEATURE_COMMAND_BT_ENABLE                 3
+#define RPC_FEATURE_OPTION_NONE                       0
+#define HCI_H4_CMD                                    0x01
+#define HCI_H4_EVT                                    0x04
+#define HCI_EVT_COMMAND_COMPLETE                      0x0E
+#define HCI_EVT_COMMAND_STATUS                        0x0F
+#define HCI_OPCODE_RESET                              0x0C03
+#define HCI_OPCODE_READ_BD_ADDR                       0x1009
+#define HCI_OPCODE_LE_SET_ADV_PARAMS                  0x2006
+#define HCI_OPCODE_LE_SET_ADV_DATA                    0x2008
+#define HCI_OPCODE_LE_SET_SCAN_RSP_DATA               0x2009
+#define HCI_OPCODE_LE_SET_ADV_ENABLE                  0x200A
 #define PROTO_PSER_TLV_T_EPNAME                       0x01
 #define PROTO_PSER_TLV_T_DATA                         0x02
 #define RPC_EP_NAME_RSP                               "RPCRsp"
@@ -89,12 +109,16 @@ typedef struct
 static uint16_t s_seq_num = 0;
 static wifi_rpc_slot_t s_rsp_q[WIFI_HOSTED_RPC_QUEUE_DEPTH];
 static wifi_rpc_slot_t s_evt_q[WIFI_HOSTED_RPC_QUEUE_DEPTH];
+static wifi_rpc_slot_t s_hci_q[WIFI_HOSTED_RPC_QUEUE_DEPTH];
 static uint8_t s_rsp_head = 0;
 static uint8_t s_rsp_tail = 0;
 static uint8_t s_rsp_count = 0;
 static uint8_t s_evt_head = 0;
 static uint8_t s_evt_tail = 0;
 static uint8_t s_evt_count = 0;
+static uint8_t s_hci_head = 0;
+static uint8_t s_hci_tail = 0;
+static uint8_t s_hci_count = 0;
 static uint32_t s_rpc_uid = 1;
 static uint16_t s_last_scan_ap_num = 0;
 static uint8_t s_scan_done_event = 0;
@@ -110,6 +134,7 @@ static int8_t wifi_hosted_parse_init_event(const uint8_t *rx);
 static int8_t wifi_hosted_poll_runtime(void);
 static int16_t wifi_hosted_build_rpc_req(uint32_t msg_id, const uint8_t *submsg, uint16_t submsg_len, uint8_t *out, uint16_t out_max);
 static int8_t wifi_hosted_poll_dhcp_dns_status_rpc(void);
+static int16_t wifi_hosted_q_pop(wifi_rpc_slot_t *q, uint8_t *head, uint8_t *count, uint8_t *buf, uint16_t buf_size, uint8_t *if_num);
 
 static uint16_t wifi_hosted_put_varint(uint32_t value, uint8_t *out)
 {
@@ -162,6 +187,25 @@ static int16_t wifi_hosted_get_varint(const uint8_t *buf, uint16_t len, uint16_t
         if (shift > 28U) {
             break;
         }
+    }
+    return -1;
+}
+
+static int16_t wifi_hosted_get_varint64(const uint8_t *buf, uint16_t len, uint16_t *pos, uint64_t *out)
+{
+    uint64_t value = 0;
+    uint8_t shift = 0;
+    uint8_t count = 0;
+
+    while ((*pos < len) && (count < 10U)) {
+        uint8_t b = buf[(*pos)++];
+        value |= ((uint64_t)(b & 0x7FU) << shift);
+        count++;
+        if ((b & 0x80U) == 0U) {
+            *out = value;
+            return 0;
+        }
+        shift = (uint8_t)(shift + 7U);
     }
     return -1;
 }
@@ -644,6 +688,113 @@ static int8_t wifi_hosted_get_config_verify_ssid(const char *ssid)
     return DRIVER_STATUS_OK;
 }
 
+static int8_t wifi_hosted_parse_coprocessor_fwversion(const uint8_t *payload, uint16_t payload_len,
+                                                      esp_hosted_coprocessor_fwver_t *ver_info)
+{
+    uint16_t p = 0;
+    uint32_t key;
+    uint32_t field;
+    uint32_t wire;
+    uint64_t v;
+    int32_t resp = 0;
+
+    if (ver_info == 0) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    ver_info->major1 = 0;
+    ver_info->minor1 = 0;
+    ver_info->patch1 = 0;
+    ver_info->revision = -1;
+    ver_info->prerelease = -1;
+    ver_info->build = -1;
+
+    while (p < payload_len) {
+        if (wifi_hosted_get_varint(payload, payload_len, &p, &key) != 0) {
+            return DRIVER_STATUS_ERROR;
+        }
+        field = key >> 3U;
+        wire = key & 0x07U;
+
+        if (wire == 0U) {
+            if (wifi_hosted_get_varint64(payload, payload_len, &p, &v) != 0) {
+                return DRIVER_STATUS_ERROR;
+            }
+            if (field == 1U) resp = (int32_t)v;
+            else if (field == 2U) ver_info->major1 = (uint32_t)v;
+            else if (field == 3U) ver_info->minor1 = (uint32_t)v;
+            else if (field == 4U) ver_info->patch1 = (uint32_t)v;
+            else if (field == 5U) ver_info->revision = (int32_t)v;
+            else if (field == 6U) ver_info->prerelease = (int32_t)v;
+            else if (field == 7U) ver_info->build = (int32_t)v;
+        } else if (wire == 2U) {
+            uint32_t l;
+            if (wifi_hosted_get_varint(payload, payload_len, &p, &l) != 0) {
+                return DRIVER_STATUS_ERROR;
+            }
+            if ((uint16_t)(p + l) > payload_len) {
+                return DRIVER_STATUS_ERROR;
+            }
+            p = (uint16_t)(p + (uint16_t)l);
+        } else {
+            return DRIVER_STATUS_ERROR;
+        }
+    }
+
+    if (resp != 0) {
+        return DRIVER_STATUS_ERROR;
+    }
+    return DRIVER_STATUS_OK;
+}
+
+static int8_t wifi_hosted_parse_feature_control_response(const uint8_t *payload, uint16_t payload_len)
+{
+    uint16_t p = 0;
+    uint32_t key;
+    uint32_t field;
+    uint32_t wire;
+    uint32_t v;
+    int32_t resp = 0;
+
+    while (p < payload_len) {
+        if (wifi_hosted_get_varint(payload, payload_len, &p, &key) != 0) {
+            return DRIVER_STATUS_ERROR;
+        }
+        field = key >> 3U;
+        wire = key & 0x07U;
+
+        if (wire == 0U) {
+            if (wifi_hosted_get_varint(payload, payload_len, &p, &v) != 0) {
+                return DRIVER_STATUS_ERROR;
+            }
+            if (field == 1U) {
+                resp = (int32_t)v;
+            }
+        } else if (wire == 2U) {
+            uint32_t l;
+            if (wifi_hosted_get_varint(payload, payload_len, &p, &l) != 0) {
+                return DRIVER_STATUS_ERROR;
+            }
+            if ((uint16_t)(p + l) > payload_len) {
+                return DRIVER_STATUS_ERROR;
+            }
+            p = (uint16_t)(p + (uint16_t)l);
+        } else {
+            return DRIVER_STATUS_ERROR;
+        }
+    }
+
+    if (resp != 0) {
+        return DRIVER_STATUS_ERROR;
+    }
+    return DRIVER_STATUS_OK;
+}
+
+static int16_t wifi_hosted_hci_recv(uint8_t *buf, uint16_t buf_size, uint8_t *if_num)
+{
+    return wifi_hosted_q_pop(s_hci_q, &s_hci_head, &s_hci_count, buf, buf_size, if_num);
+}
+
 static int8_t wifi_hosted_consume_events(void)
 {
     uint8_t evt[WIFI_HOSTED_RPC_MAX_PAYLOAD];
@@ -761,6 +912,9 @@ static void wifi_hosted_q_reset(void)
     s_evt_head = 0;
     s_evt_tail = 0;
     s_evt_count = 0;
+    s_hci_head = 0;
+    s_hci_tail = 0;
+    s_hci_count = 0;
 }
 
 static int8_t wifi_hosted_q_push(wifi_rpc_slot_t *q, uint8_t *tail, uint8_t *count, uint8_t if_num, const uint8_t *data, uint16_t len)
@@ -880,6 +1034,10 @@ static int8_t wifi_hosted_process_rx_frame(const uint8_t *rx)
 
     if (h->if_type == ESP_SERIAL_IF) {
         return wifi_hosted_dispatch_serial_frame(h->if_num, rx + offset, len);
+    }
+
+    if (h->if_type == ESP_HCI_IF) {
+        return wifi_hosted_q_push(s_hci_q, &s_hci_tail, &s_hci_count, h->if_num, rx + offset, len);
     }
 
     if (h->if_type == ESP_PRIV_IF) {
@@ -1415,6 +1573,95 @@ static int8_t wifi_hosted_connect_target_ap_rpc(void)
     return DRIVER_STATUS_OK;
 }
 
+static int8_t wifi_hosted_hci_wait_cmd_done(uint16_t opcode, uint16_t timeout_ms)
+{
+    uint32_t start = HAL_GetTick();
+    uint8_t evt[96];
+    uint8_t if_num;
+    int16_t got;
+
+    while ((HAL_GetTick() - start) < timeout_ms) {
+        got = wifi_hosted_hci_recv(evt, sizeof(evt), &if_num);
+        if (got > 0) {
+            if ((got >= 7) && (evt[0] == HCI_H4_EVT) && (evt[1] == HCI_EVT_COMMAND_COMPLETE)) {
+                uint16_t rsp_opcode = (uint16_t)evt[4] | ((uint16_t)evt[5] << 8U);
+                uint8_t status = evt[6];
+                if (rsp_opcode == opcode) {
+                    if (status == 0U) {
+                        return DRIVER_STATUS_OK;
+                    }
+                    debug_log(DERROR, "HCI cmd 0x%x complete status=0x%x\n", opcode, status);
+                    return DRIVER_STATUS_ERROR;
+                }
+            } else if ((got >= 7) && (evt[0] == HCI_H4_EVT) && (evt[1] == HCI_EVT_COMMAND_STATUS)) {
+                uint8_t status = evt[3];
+                uint16_t rsp_opcode = (uint16_t)evt[5] | ((uint16_t)evt[6] << 8U);
+                if (rsp_opcode == opcode) {
+                    if (status == 0U) {
+                        return DRIVER_STATUS_OK;
+                    }
+                    debug_log(DERROR, "HCI cmd 0x%x status=0x%x\n", opcode, status);
+                    return DRIVER_STATUS_ERROR;
+                }
+            }
+        }
+
+        (void)wifi_hosted_poll_runtime();
+        delay_ms(20);
+    }
+
+    debug_log(DERROR, "Timeout waiting HCI cmd 0x%x response\n", opcode);
+    return DRIVER_STATUS_TIMEOUT;
+}
+
+static int8_t wifi_hosted_hci_send_cmd(uint16_t opcode, const uint8_t *params, uint8_t param_len,
+                                       uint16_t timeout_ms)
+{
+    uint8_t tx[WIFI_HOSTED_SPI_FRAME_SIZE] = {0};
+    uint8_t rx[WIFI_HOSTED_SPI_FRAME_SIZE] = {0};
+    uint8_t *payload = tx + WIFI_HOSTED_HEADER_SIZE;
+    esp_payload_header_t *h = (esp_payload_header_t *)tx;
+    uint16_t i;
+    uint16_t hci_len = (uint16_t)(3U + param_len);
+
+    payload[0] = (uint8_t)(opcode & 0xFFU);
+    payload[1] = (uint8_t)((opcode >> 8U) & 0xFFU);
+    payload[2] = param_len;
+    for (i = 0; i < param_len; i++) {
+        payload[3U + i] = params[i];
+    }
+
+    wifi_hosted_build_header(tx, ESP_HCI_IF, 0, hci_len);
+    h->reserved3 = HCI_H4_CMD;
+    h->checksum = 0;
+    h->checksum = wifi_hosted_checksum(tx, (uint16_t)(WIFI_HOSTED_HEADER_SIZE + hci_len));
+
+    if (wifi_hosted_xfer_frame(tx, rx) != DRIVER_STATUS_OK) {
+        debug_log(DERROR, "HCI cmd 0x%x SPI send failed\n", opcode);
+        return DRIVER_STATUS_TIMEOUT;
+    }
+    (void)wifi_hosted_process_rx_frame(rx);
+
+    return wifi_hosted_hci_wait_cmd_done(opcode, timeout_ms);
+}
+
+static uint8_t wifi_hosted_append_adv_field(uint8_t *dst, uint8_t pos, uint8_t max,
+                                            uint8_t type, const uint8_t *data, uint8_t data_len)
+{
+    uint8_t i;
+    uint8_t field_len = (uint8_t)(data_len + 1U);
+
+    if ((uint8_t)(pos + field_len + 1U) > max) {
+        return pos;
+    }
+
+    dst[pos++] = field_len;
+    dst[pos++] = type;
+    for (i = 0; i < data_len; i++) {
+        dst[pos++] = data[i];
+    }
+    return pos;
+}
 
 /* Exported variables ****************************************************** */
 WIFI_HOSTED_CTX g_WIFI_HOSTED_CTX =
@@ -1442,6 +1689,200 @@ int8_t wifi_init(void)
     g_WIFI_HOSTED_CTX.init_event_received = 0;
     g_WIFI_HOSTED_CTX.slave_chip_id = 0xFF;
     wifi_hosted_q_reset();
+    return DRIVER_STATUS_OK;
+}
+
+int8_t esp_hosted_connect_to_slave(void)
+{
+    uint32_t start;
+
+    debug_log(DNONE, "ESP-Hosted Try to communicate with ESP-Hosted slave\n");
+    if (wifi_init() != DRIVER_STATUS_OK) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    start = HAL_GetTick();
+    while ((HAL_GetTick() - start) < WIFI_HOSTED_CONNECT_TIMEOUT_MS) {
+        if (g_WIFI_HOSTED_CTX.state == WIFI_HOSTED_STATE_WAIT_INIT_EVENT) {
+            if (wifi_hosted_poll_for_init_event() == DRIVER_STATUS_OK) {
+                g_WIFI_HOSTED_CTX.state = WIFI_HOSTED_STATE_SEND_INIT_CONFIG;
+            }
+        } else if (g_WIFI_HOSTED_CTX.state == WIFI_HOSTED_STATE_SEND_INIT_CONFIG) {
+            if (wifi_hosted_send_init_config() == DRIVER_STATUS_OK) {
+                g_WIFI_HOSTED_CTX.state = WIFI_HOSTED_STATE_TRANSPORT_READY;
+                debug_log(DNONE, "ESP-hosted transport init complete\n");
+                return DRIVER_STATUS_OK;
+            }
+            g_WIFI_HOSTED_CTX.state = WIFI_HOSTED_STATE_ERROR;
+            return DRIVER_STATUS_ERROR;
+        } else if (g_WIFI_HOSTED_CTX.state == WIFI_HOSTED_STATE_TRANSPORT_READY) {
+            return DRIVER_STATUS_OK;
+        } else if (g_WIFI_HOSTED_CTX.state == WIFI_HOSTED_STATE_ERROR) {
+            return DRIVER_STATUS_ERROR;
+        }
+        delay_ms(20);
+    }
+
+    debug_log(DERROR, "Timed out waiting for ESP-hosted slave init\n");
+    g_WIFI_HOSTED_CTX.state = WIFI_HOSTED_STATE_ERROR;
+    return DRIVER_STATUS_TIMEOUT;
+}
+
+int8_t esp_hosted_get_coprocessor_fwversion(esp_hosted_coprocessor_fwver_t *ver_info)
+{
+    uint8_t rpc_buf[96];
+    uint8_t resp_payload[96];
+    int16_t rpc_len;
+    int16_t resp_len;
+
+    if (ver_info == 0) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    rpc_len = wifi_hosted_build_rpc_req(RPC_MSG_ID_REQ_GET_COPROCESSOR_FWVERSION,
+                                        0, 0, rpc_buf, sizeof(rpc_buf));
+    if (rpc_len <= 0) {
+        debug_log(DERROR, "RPC build failed for GetCoprocessorFwVersion\n");
+        return DRIVER_STATUS_ERROR;
+    }
+    if (wifi_hosted_rpc_send(0, rpc_buf, (uint16_t)rpc_len) != DRIVER_STATUS_OK) {
+        debug_log(DERROR, "RPC send failed for GetCoprocessorFwVersion\n");
+        return DRIVER_STATUS_TIMEOUT;
+    }
+
+    resp_len = wifi_hosted_wait_rpc_payload(RPC_MSG_ID_RESP_GET_COPROCESSOR_FWVERSION,
+                                            resp_payload, sizeof(resp_payload), 3000);
+    if (resp_len <= 0) {
+        debug_log(DERROR, "No/invalid response for GetCoprocessorFwVersion\n");
+        return DRIVER_STATUS_TIMEOUT;
+    }
+
+    if (wifi_hosted_parse_coprocessor_fwversion(resp_payload, (uint16_t)resp_len,
+                                                ver_info) != DRIVER_STATUS_OK) {
+        debug_log(DERROR, "Failed to parse GetCoprocessorFwVersion response\n");
+        return DRIVER_STATUS_ERROR;
+    }
+
+    return DRIVER_STATUS_OK;
+}
+
+static int8_t wifi_hosted_bt_feature_control(uint32_t command, const char *name)
+{
+    uint8_t rpc_buf[96];
+    uint8_t submsg[8];
+    uint8_t resp_payload[32];
+    uint16_t sub_len = 0;
+    int16_t rpc_len;
+    int16_t resp_len;
+
+    submsg[sub_len++] = 0x08;
+    sub_len = (uint16_t)(sub_len + wifi_hosted_put_varint(RPC_FEATURE_BLUETOOTH,
+                                                          &submsg[sub_len]));
+    submsg[sub_len++] = 0x10;
+    sub_len = (uint16_t)(sub_len + wifi_hosted_put_varint(command, &submsg[sub_len]));
+    submsg[sub_len++] = 0x18;
+    sub_len = (uint16_t)(sub_len + wifi_hosted_put_varint(RPC_FEATURE_OPTION_NONE,
+                                                          &submsg[sub_len]));
+
+    rpc_len = wifi_hosted_build_rpc_req(RPC_MSG_ID_REQ_FEATURE_CONTROL,
+                                        submsg, sub_len, rpc_buf, sizeof(rpc_buf));
+    if (rpc_len <= 0) {
+        debug_log(DERROR, "RPC build failed for %s\n", name);
+        return DRIVER_STATUS_ERROR;
+    }
+    if (wifi_hosted_rpc_send(0, rpc_buf, (uint16_t)rpc_len) != DRIVER_STATUS_OK) {
+        debug_log(DERROR, "RPC send failed for %s\n", name);
+        return DRIVER_STATUS_TIMEOUT;
+    }
+
+    resp_len = wifi_hosted_wait_rpc_payload(RPC_MSG_ID_RESP_FEATURE_CONTROL,
+                                            resp_payload, sizeof(resp_payload), 3000);
+    if (resp_len <= 0) {
+        debug_log(DERROR, "No/invalid response for %s\n", name);
+        return DRIVER_STATUS_TIMEOUT;
+    }
+
+    if (wifi_hosted_parse_feature_control_response(resp_payload, (uint16_t)resp_len) != DRIVER_STATUS_OK) {
+        debug_log(DERROR, "%s failed in slave response\n", name);
+        return DRIVER_STATUS_ERROR;
+    }
+
+    return DRIVER_STATUS_OK;
+}
+
+int8_t esp_hosted_bt_controller_init(void)
+{
+    return wifi_hosted_bt_feature_control(RPC_FEATURE_COMMAND_BT_INIT, "BtControllerInit");
+}
+
+int8_t esp_hosted_bt_controller_enable(void)
+{
+    return wifi_hosted_bt_feature_control(RPC_FEATURE_COMMAND_BT_ENABLE, "BtControllerEnable");
+}
+
+int8_t esp_hosted_ble_start_advertising(const char *name)
+{
+    uint8_t adv_params[15] = {
+        0xA0, 0x00,             /* adv_interval_min: 100 ms */
+        0xF0, 0x00,             /* adv_interval_max: 150 ms */
+        0x00,                   /* connectable undirected advertising */
+        0x00,                   /* own address type: public */
+        0x00,                   /* peer address type */
+        0, 0, 0, 0, 0, 0,       /* peer address */
+        0x07,                   /* channels 37, 38, 39 */
+        0x00                    /* allow scan/connect from any */
+    };
+    uint8_t adv_data[32] = {0};
+    uint8_t scan_rsp[32] = {0};
+    uint8_t adv_enable[1] = {1};
+    uint8_t adv_len = 0;
+    uint8_t scan_len = 0;
+    const char *adv_name = name;
+    uint8_t name_len = 0;
+    uint8_t flags = 0x06;
+    uint8_t i;
+
+    if ((adv_name == 0) || (adv_name[0] == '\0')) {
+        adv_name = "stm32-ble";
+    }
+    while ((adv_name[name_len] != '\0') && (name_len < 29U)) {
+        name_len++;
+    }
+
+    if (wifi_hosted_hci_send_cmd(HCI_OPCODE_RESET, 0, 0, 1000) != DRIVER_STATUS_OK) {
+        return DRIVER_STATUS_ERROR;
+    }
+    (void)wifi_hosted_hci_send_cmd(HCI_OPCODE_READ_BD_ADDR, 0, 0, 1000);
+
+    if (wifi_hosted_hci_send_cmd(HCI_OPCODE_LE_SET_ADV_PARAMS,
+                                 adv_params, sizeof(adv_params), 1000) != DRIVER_STATUS_OK) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    adv_len = wifi_hosted_append_adv_field(&adv_data[1], adv_len, 31U, 0x01, &flags, 1U);
+    adv_data[0] = adv_len;
+    if (wifi_hosted_hci_send_cmd(HCI_OPCODE_LE_SET_ADV_DATA,
+                                 adv_data, sizeof(adv_data), 1000) != DRIVER_STATUS_OK) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    scan_len = wifi_hosted_append_adv_field(&scan_rsp[1], scan_len, 31U,
+                                            0x09, (const uint8_t *)adv_name, name_len);
+    scan_rsp[0] = scan_len;
+    for (i = (uint8_t)(scan_len + 1U); i < sizeof(scan_rsp); i++) {
+        scan_rsp[i] = 0;
+    }
+    if (wifi_hosted_hci_send_cmd(HCI_OPCODE_LE_SET_SCAN_RSP_DATA,
+                                 scan_rsp, sizeof(scan_rsp), 1000) != DRIVER_STATUS_OK) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    if (wifi_hosted_hci_send_cmd(HCI_OPCODE_LE_SET_ADV_ENABLE,
+                                 adv_enable, sizeof(adv_enable), 1000) != DRIVER_STATUS_OK) {
+        return DRIVER_STATUS_ERROR;
+    }
+
+    debug_log(DNONE, "BLE legacy advertising started as '%s'\n", adv_name);
     return DRIVER_STATUS_OK;
 }
 

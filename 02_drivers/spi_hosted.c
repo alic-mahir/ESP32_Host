@@ -27,14 +27,70 @@
 #define SPI_HOSTED_DRDY_GPIO_PORT                     GPIOB
 
 #ifndef SPI_HOSTED_LOG_RAW_TX
-#define SPI_HOSTED_LOG_RAW_TX                         0
+#define SPI_HOSTED_LOG_RAW_TX                         1
 #endif
 
 #ifndef SPI_HOSTED_LOG_RAW_RX
-#define SPI_HOSTED_LOG_RAW_RX                         0
+#define SPI_HOSTED_LOG_RAW_RX                         1
+#endif
+
+#ifndef SPI_HOSTED_LOG_RAW_MAX_BYTES
+#define SPI_HOSTED_LOG_RAW_MAX_BYTES                  192
 #endif
 
 /* Private functions ******************************************************* */
+static uint16_t spi_hosted_log_len(const uint8_t *data, uint16_t size)
+{
+    uint16_t payload_len;
+    uint16_t offset;
+    uint16_t frame_len;
+
+    if ((data == 0) || (size < 12U)) {
+        return size;
+    }
+
+    payload_len = (uint16_t)data[2] | ((uint16_t)data[3] << 8U);
+    offset = (uint16_t)data[4] | ((uint16_t)data[5] << 8U);
+    frame_len = (uint16_t)(offset + payload_len);
+
+    if ((offset == 12U) && (frame_len > 12U) && (frame_len <= size)) {
+        if (frame_len < SPI_HOSTED_LOG_RAW_MAX_BYTES) {
+            return frame_len;
+        }
+    }
+
+    if (size > SPI_HOSTED_LOG_RAW_MAX_BYTES) {
+        return SPI_HOSTED_LOG_RAW_MAX_BYTES;
+    }
+    return size;
+}
+
+static void spi_hosted_log_frame_summary(const char *dir, const uint8_t *data, uint16_t size)
+{
+    uint8_t if_type;
+    uint8_t if_num;
+    uint8_t flags;
+    uint16_t payload_len;
+    uint16_t offset;
+    uint16_t checksum;
+    uint16_t seq_num;
+
+    if ((data == 0) || (size < 12U)) {
+        return;
+    }
+
+    if_type = data[0] & 0x0FU;
+    if_num = (data[0] >> 4U) & 0x0FU;
+    flags = data[1];
+    payload_len = (uint16_t)data[2] | ((uint16_t)data[3] << 8U);
+    offset = (uint16_t)data[4] | ((uint16_t)data[5] << 8U);
+    checksum = (uint16_t)data[6] | ((uint16_t)data[7] << 8U);
+    seq_num = (uint16_t)data[8] | ((uint16_t)data[9] << 8U);
+
+    debug_log(DAPPEND, "SPI %s HDR: if=%u num=%u flags=0x%02X len=%u off=%u csum=0x%04X seq=%u\n",
+              dir, if_type, if_num, flags, payload_len, offset, checksum, seq_num);
+}
+
 static int8_t spi_hosted_wait_drdy_level(GPIO_PinState level, uint32_t timeout_ms)
 {
     uint32_t start = HAL_GetTick();
@@ -66,19 +122,22 @@ static void spi_hosted_log_tx_raw(const uint8_t *tx_data, uint16_t size)
 #if SPI_HOSTED_LOG_RAW_TX
     char line[72];
     uint16_t i = 0;
+    uint16_t log_size;
 
     if (size == 0U) {
         debug_log(DAPPEND, "SPI TX RAW [0]: <empty>\n");
         return;
     }
 
-    debug_log(DAPPEND, "SPI TX RAW [%u]:\n", (unsigned int)size);
+    spi_hosted_log_frame_summary("TX", tx_data, size);
+    log_size = spi_hosted_log_len(tx_data, size);
+    debug_log(DAPPEND, "SPI TX RAW [%u/%u]:\n", (unsigned int)log_size, (unsigned int)size);
 
-    while (i < size) {
+    while (i < log_size) {
         int written = snprintf(line, sizeof(line), "  %04u:", (unsigned int)i);
         uint16_t j = 0;
 
-        while ((j < 16U) && ((i + j) < size) && (written > 0) && (written < (int)sizeof(line))) {
+        while ((j < 16U) && ((i + j) < log_size) && (written > 0) && (written < (int)sizeof(line))) {
             written += snprintf(&line[written], sizeof(line) - (size_t)written, " %02X",
                                 tx_data ? tx_data[i + j] : 0xFFU);
             j++;
@@ -98,6 +157,7 @@ static void spi_hosted_log_rx_raw(const uint8_t *rx_data, uint16_t size)
 #if SPI_HOSTED_LOG_RAW_RX
     char line[72];
     uint16_t i = 0;
+    uint16_t log_size;
 
     if (rx_data == NULL) {
         debug_log(DAPPEND, "SPI RX RAW: <not captured>\n");
@@ -109,13 +169,15 @@ static void spi_hosted_log_rx_raw(const uint8_t *rx_data, uint16_t size)
         return;
     }
 
-    debug_log(DAPPEND, "SPI RX RAW [%u]:\n", (unsigned int)size);
+    spi_hosted_log_frame_summary("RX", rx_data, size);
+    log_size = spi_hosted_log_len(rx_data, size);
+    debug_log(DAPPEND, "SPI RX RAW [%u/%u]:\n", (unsigned int)log_size, (unsigned int)size);
 
-    while (i < size) {
+    while (i < log_size) {
         int written = snprintf(line, sizeof(line), "  %04u:", (unsigned int)i);
         uint16_t j = 0;
 
-        while ((j < 16U) && ((i + j) < size) && (written > 0) && (written < (int)sizeof(line))) {
+        while ((j < 16U) && ((i + j) < log_size) && (written > 0) && (written < (int)sizeof(line))) {
             written += snprintf(&line[written], sizeof(line) - (size_t)written, " %02X",
                                 rx_data[i + j]);
             j++;

@@ -42,13 +42,42 @@ int main(void)
 	debug_log(DNONE, "Init completed\n");
 	log_esp_slave_pinout();
 
-	if (wifi_init() != DRIVER_STATUS_OK) {
-		debug_log(DNONE, "wifi_init failed\n");
+	if (esp_hosted_connect_to_slave() != DRIVER_STATUS_OK) {
+		debug_log(DNONE, "esp_hosted_connect_to_slave failed\n");
+	} else {
+		esp_hosted_coprocessor_fwver_t fwver;
+		if (esp_hosted_get_coprocessor_fwversion(&fwver) == DRIVER_STATUS_OK) {
+			debug_log(DNONE, "Slave FW Version: %d.%d.%d\n",
+					  fwver.major1, fwver.minor1, fwver.patch1);
+		} else {
+			debug_log(DWARNING, "failed to get slave fw version\n");
+		}
 	}
+
+	// init bt controller
+    if (esp_hosted_bt_controller_init() != DRIVER_STATUS_OK) {
+        debug_log(DNONE, "failed to init bt controller\n");
+    }
+
+
+	// enable bt controller
+    if (esp_hosted_bt_controller_enable() != DRIVER_STATUS_OK) {
+        debug_log(DNONE, "failed to enable bt controller\n");
+    }
+
+	if(esp_hosted_ble_start_advertising("esp32-BLE") != DRIVER_STATUS_OK)
+	{
+		debug_log(DNONE,"failed to start advertising\n");
+	}
+
+	
+	// if (wifi_init() != DRIVER_STATUS_OK) {
+	// 	debug_log(DNONE, "wifi_init failed\n");
+	// }
 
 	while (1)
 	{
-		wifi_task();
+		// wifi_task();
 		delay_ms(10);
 	}
 
