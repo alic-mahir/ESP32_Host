@@ -56,6 +56,8 @@ int8_t esp_hosted_get_coprocessor_fwversion(esp_hosted_coprocessor_fwver_t *ver_
 int8_t esp_hosted_bt_controller_init(void);
 int8_t esp_hosted_bt_controller_enable(void);
 int8_t esp_hosted_ble_start_advertising(const char *name);
+void esp_hosted_ble_task(void);
+uint8_t esp_hosted_ble_is_connected(void);
 int8_t wifi_hosted_rpc_send(uint8_t if_num, const uint8_t *payload, uint16_t len);
 int16_t wifi_hosted_rpc_recv_rsp(uint8_t *buf, uint16_t buf_size, uint8_t *if_num);
 int16_t wifi_hosted_rpc_recv_evt(uint8_t *buf, uint16_t buf_size, uint8_t *if_num);

@@ -78,6 +78,7 @@ int main(void)
 	while (1)
 	{
 		// wifi_task();
+		esp_hosted_ble_task();
 		delay_ms(10);
 	}
 
